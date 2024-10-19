@@ -1,0 +1,63 @@
+import pandas as pd
+from statsmodels.tsa.seasonal import seasonal_decompose
+
+# Función para asignar estaciones según las fechas en Paraguay
+def asignar_estacion(fecha):
+    mes = fecha.month
+    if mes in [12, 1, 2]:
+        return 'Verano'
+    elif mes in [3, 4, 5]:
+        return 'Otoño'
+    elif mes in [6, 7, 8]:
+        return 'Invierno'
+    elif mes in [9, 10, 11]:
+        return 'Primavera'
+
+# Paso 1: Cargar los datos del archivo CSV con el separador correcto
+csv_path = r"C:\Users\adalcaraz\Downloads\factor_estacional_csv.csv"
+df = pd.read_csv(csv_path, sep=';')  # Usamos ';' como separador
+
+# Paso 2: Verificar las cabeceras
+if 'rango_fechas' in df.columns and 'Ventas' in df.columns:
+    # Extraer la fecha de inicio de la semana del rango de fechas
+    df['inicio_semana'] = df['rango_fechas'].apply(lambda x: x.split(' al ')[0].strip())
+    df['inicio_semana'] = pd.to_datetime(df['inicio_semana'], format='%d/%m/%Y', errors='coerce')
+
+    # Verificar si hubo errores en la conversión
+    if df['inicio_semana'].isnull().any():
+        print("Advertencia: Algunas fechas no se pudieron convertir.")
+
+    # Paso 3: Asignar la columna de ventas
+    df['Ventas'] = df['Ventas'].astype(float)
+
+    # Paso 4: Establecer la columna de inicio_semana como índice
+    df.set_index('inicio_semana', inplace=True)
+
+    # Paso 5: Realizar la descomposición estacional
+    result = seasonal_decompose(df['Ventas'], model='additive', period=7)
+
+    # Obtener los factores de estacionalidad
+    estacionalidad = result.seasonal
+
+    # Normalizar los valores entre -1 y 1
+    estacionalidad_min = estacionalidad.min()
+    estacionalidad_max = estacionalidad.max()
+    estacionalidad_normalizada = 2 * ((estacionalidad - estacionalidad_min) / (estacionalidad_max - estacionalidad_min)) - 1
+
+    # Paso 6: Extraer el año y la estación
+    df['año'] = df.index.year
+    df['estacion'] = df.index.map(asignar_estacion)
+
+    # Crear una tabla de estacionalidad por año y estación
+    tabla_estacionalidad = df[['Ventas', 'año', 'estacion']].copy()
+    tabla_estacionalidad['Factor de Estacionalidad Normalizado'] = estacionalidad_normalizada
+
+    # Agrupar por año y estación y calcular el promedio del factor de estacionalidad
+    tabla_promedio_estacionalidad = tabla_estacionalidad.groupby(['año', 'estacion'])['Factor de Estacionalidad Normalizado'].mean().reset_index()
+
+    # Mostrar la tabla de factores de estacionalidad normalizados por año y estación
+    print("Tabla de Factor de Estacionalidad Normalizado por Año y Estación:")
+    print(tabla_promedio_estacionalidad)
+
+else:
+    print("Error: Las columnas necesarias no se encontraron en el DataFrame.")
